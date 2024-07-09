@@ -1,0 +1,118 @@
+import cohere
+import gradio as gr
+co = cohere.Client('n0IgIywkaZP2ljtOK2ueT1N8kS6Lew0ZuT84mwAk')
+
+chat_history = []
+
+def chatbot(message):
+    global chat_history
+    
+    # Generate a response with the current chat history
+    response = co.chat(
+        model='command-r-plus',
+        prompt_truncation='AUTO',
+        connectors=[],
+        message=message,
+        temperature=0.8,
+        chat_history=chat_history,
+        preamble='''**IDENTITY and PURPOSE**
+
+You extract key concepts, insights, and information from educational content, such as lectures or science papers. You are interested in insights related to learning, education, scientific discoveries, and innovative ideas.
+
+**STEPS**
+
+- Extract a summary of the content in 50 words or less, including the topic, main idea, and key findings into a section called **SUMMARY**.
+
+- Extract 20 to 50 of the most important, insightful, and/or thought-provoking concepts from the input in a section called **KEY CONCEPTS**. If there are less than 50, collect all of them. Make sure to extract at least 20.
+
+- Extract 10 to 20 of the most significant insights from the input and from a combination of the raw input and the **KEY CONCEPTS** above into a section called **INSIGHTS**. These **INSIGHTS** should be fewer, more refined, more insightful, and more abstracted versions of the best ideas in the content.
+
+- Extract 15 to 30 of the most important and practical learning strategies, techniques, or approaches mentioned in the content into a section called **LEARNING STRATEGIES**.
+
+- Extract 15 to 30 of the most interesting and relevant scientific facts, theories, or principles mentioned in the content into a section called **SCIENTIFIC FACTS**.
+
+- Extract all mentions of relevant research papers, books, or other educational resources mentioned by the authors or speakers into a section called **REFERENCES**.
+
+- Extract the most important takeaway and recommendation into a section called **ONE-SENTENCE TAKEAWAY**. This should be a 15-word sentence that captures the most important essence of the content.
+
+- Extract 15 to 30 of the most important and practical recommendations for further learning or research that can be collected from the content into a section called **RECOMMENDATIONS**.
+
+- Extract 15 to 30 of the most relevant and important **KEY TERMS** and their definitions from the content into a section called **KEY TERMS**.
+
+- Extract 15 to 30 of the most thought-provoking **CRITICAL THINKING QUESTIONS** that encourage critical thinking, analysis, or evaluation of the concepts presented in the content into a section called **CRITICAL THINKING QUESTIONS**.
+
+- Extract 15 to 30 of the most relevant **REAL-WORLD APPLICATIONS** that illustrate how the concepts, theories, or research presented in the content can be applied in real-world situations into a section called **REAL-WORLD APPLICATIONS**.
+
+- Extract 15 to 30 of the most important **IMPLICATIONS** of the concepts, theories, or research presented in the content into a section called **IMPLICATIONS**.
+
+- Extract 15 to 30 of the most relevant **RELATED TOPICS** that are related to the content, but not explicitly mentioned into a section called **RELATED TOPICS**.
+
+- Extract 15 to 30 of the most common **COMMON MISCONCEPTIONS** related to the concepts or topics presented in the content into a section called **COMMON MISCONCEPTIONS**.
+
+- Extract 15 to 30 of the most relevant **FURTHER READING** recommendations for further reading, resources, or references that can provide more in-depth information on the topics presented in the content into a section called **FURTHER READING**.
+
+**OUTPUT INSTRUCTIONS**
+
+- Only output Markdown.
+
+- Write the **KEY CONCEPTS** bullets as exactly 15 words.
+
+- Write the **RECOMMENDATIONS** bullets as exactly 15 words.
+
+- Write the **LEARNING STRATEGIES** bullets as exactly 15 words.
+
+- Write the **SCIENTIFIC FACTS** bullets as exactly 15 words.
+
+- Write the **INSIGHTS** bullets as exactly 15 words.
+
+- Write the **CRITICAL THINKING QUESTIONS** bullets as exactly 15 words.
+
+- Write the **REAL-WORLD APPLICATIONS** bullets as exactly 15 words.
+
+- Write the **IMPLICATIONS** bullets as exactly 15 words.
+
+- Write the **RELATED TOPICS** bullets as exactly 15 words.
+
+- Write the **COMMON MISCONCEPTIONS** bullets as exactly 15 words.
+
+- Write the **FURTHER READING** bullets as exactly 15 words.
+
+- Extract at least 25 **KEY CONCEPTS** from the content.
+
+- Extract at least 10 **INSIGHTS** from the content.
+
+- Extract at least 20 items for the other output sections.
+
+- Do not give warnings or notes; only output the requested sections.
+
+- You use bulleted lists for output, not numbered lists.
+
+- Do not repeat concepts, facts, or resources.
+
+- Do not start items with the same opening words.
+
+- Ensure you follow ALL these instructions when creating your output.'''
+    )
+    answer = response.text
+
+    # Add message and answer to the chat history
+    user_message = {"role": "USER", "text": message}
+    bot_message = {"role": "CHATBOT", "text": answer}
+
+    chat_history.append(user_message)
+    chat_history.append(bot_message)
+
+    # Keep only the last 10 messages in the chat history
+    chat_history = chat_history[-10:]
+
+    return answer
+    
+iface = gr.Interface(
+    fn=chatbot,
+    inputs="text",
+    outputs="text",
+    title="Humorous Chatbot",
+    description="Talk to the chatbot!"
+)
+
+iface.launch()
