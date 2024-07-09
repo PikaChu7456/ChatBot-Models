@@ -1,0 +1,136 @@
+import os
+import PyPDF2
+import cohere
+import pinecone
+from pinecone import Pinecone, ServerlessSpec
+import time
+from groq import Groq
+import gradio as gr
+from transformers import pipeline
+
+# Initialize the Cohere client
+co = cohere.Client('TcZjPcNuntkBpDbSsH5M5X8N9vlSs6Mq11KoL3rd')
+
+# Initialize Pinecone
+pc = Pinecone(api_key="873621c7-8126-4f60-a55b-255d2654dd2b")
+
+index = pc.Index("groq-first-term")
+
+def extract_text_from_pdf(pdf_path):
+    text = ""
+    with open(pdf_path, 'rb') as file:
+        reader = PyPDF2.PdfReader(file)
+        for page_num in range(len(reader.pages)):
+            text += reader.pages[page_num].extract_text()
+    return text
+
+def chunk_text(text, chunk_size=500):
+    words = text.split()
+    chunks = [' '.join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+    return chunks
+
+def embed_with_cohere(text):
+    response = co.embed(model='embed-multilingual-v3.0', texts=[text], input_type='search_document')
+    return response.embeddings[0]
+
+# Directory containing the PDF files
+pdf_directory = '/content/drive/MyDrive/First term Cs 3rd/first'
+
+# Process each PDF, chunk it, embed it, and store results in Pinecone
+for pdf_file in os.listdir(pdf_directory):
+    if pdf_file.endswith('.pdf'):
+        pdf_path = os.path.join(pdf_directory, pdf_file)
+        text = extract_text_from_pdf(pdf_path)
+        chunks = chunk_text(text)
+
+        for i, chunk in enumerate(chunks):
+            embedding_cohere = embed_with_cohere(chunk)
+            metadata = {'pdf_file': pdf_file, 'chunk_id': i}
+            # Create a unique ID for each chunk
+            unique_id = f"{pdf_file}_{i}"
+            index.upsert([(unique_id, embedding_cohere, metadata)])
+
+            time.sleep(2)
+
+print("All chunks have been processed and stored in Pinecone.")
+
+def get_relevant_Queries(user_question, index):
+    # Generate embedding for the user's question
+    query_embedding = co.embed(
+        texts=[user_question],
+        model='embed-multilingual-v3.0',
+        input_type='search_query'
+    ).embeddings[0]
+
+    # Query Pinecone with the generated embedding
+    query_response = index.query(
+        vector=query_embedding,
+        top_k=3,
+        include_values=True,
+        include_metadata=True
+    )
+
+    # Extract relevant information from each match in query_response
+    relevant_Queries = []
+    for match in query_response['matches']:
+        metadata = match['metadata']
+        excerpt = f"Chunk ID: {metadata['chunk_id']}, PDF File: {metadata['pdf_file']}"
+        relevant_Queries.append(excerpt)
+
+    # Join Queries into a single string
+    relevant_Queries_str = '\n\n------------------------------------------------------\n\n'.join(relevant_Queries)
+
+    return relevant_Queries_str
+
+def main_chatbot(client, model, user_question, relevant_Queries):
+    # Define the system prompt
+    system_prompt = '''
+   You are Yuno, a focused and dedicated computer science student.
+   Your passion lies solely in academic pursuits, particularly in the field of science, technology and coding.
+   You strive to be the top student in your class and devote most of your time to studying and expanding your knowledge.
+   When interacting with others, you prefer to keep the conversation strictly related to the curriculum and scientific topics.
+   You have no interest in discussing your personal life, hobbies, or anything unrelated to your academic goals.
+   Your responses are precise, factual, and aligned with the curriculum.
+   This is your character trait, and you are known for your unwavering focus on academic excellence
+   retrieve the whole answer from the context as it is, you can add as much information as you want if you see fitting to the question or would benefit the user.
+   you always mention the name of the lecture you're referencing from.
+   do NOT mention the Chunk_id.
+'''
+
+    # Generate a response to the user's question using the pre-trained model
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": "User Question: " + user_question + "\n\nRelevant Context:\n\n" + relevant_Queries,
+            }
+        ],
+        model=model,
+        temperature=.8,
+        max_tokens=4000,
+
+
+    )
+
+    return chat_completion.choices[0].message.content
+
+def chatbot_interface(user_question):
+    model = 'llama3-70b-8192'
+    client = Groq(api_key='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')
+    relevant_Queries = get_relevant_Queries(user_question, index)
+    response = main_chatbot(client, model, user_question, relevant_Queries)
+    return response
+
+
+iface = gr.Interface(
+        fn=chatbot_interface,
+        inputs="text",
+        outputs="text",
+        title="Academic Chatbot",
+        description="Ask me a question related to computer science or technology!"
+    )
+iface.launch()
